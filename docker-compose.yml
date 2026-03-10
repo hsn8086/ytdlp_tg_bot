@@ -1,0 +1,11 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - downloads:/tmp/ytdlp_bot_downloads
+
+volumes:
+  downloads:

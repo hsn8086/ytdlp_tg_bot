@@ -1,0 +1,33 @@
+[project]
+name = "ytdlp-bot"
+version = "0.1.0"
+description = "Telegram video download bot powered by yt-dlp"
+readme = "docs/RPD.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic-settings>=2.8.1",
+    "pytelegrambotapi>=4.26.0",
+    "yt-dlp>=2025.2.19",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.11.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ytdlp_bot"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
