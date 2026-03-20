@@ -281,7 +281,9 @@ volumes:
 | 变量名 | 必填 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `TELEGRAM_BOT_TOKEN` | ✅ | - | Telegram Bot Token (从 @BotFather 获取) |
-| `TELEGRAM_API_URL` | ❌ | `None` | 自定义 Telegram Bot API Server 的基础 URL，如 `http://api-server:8081` |
+| `TELEGRAM_API_ID` | ✅ | - | Telegram API ID (用于自建 Bot API Server，从 my.telegram.org 获取) |
+| `TELEGRAM_API_HASH` | ✅ | - | Telegram API Hash (同上) |
+| `TELEGRAM_API_URL` | ❌ | `None` | 自定义 Telegram Bot API Server 的基础 URL（docker-compose 已默认配置为 `http://telegram-bot-api:8081`） |
 | `PROXY_URL` | ❌ | `None` | 代理地址，如 `http://host:port` 或 `socks5://host:port` |
 | `DOWNLOAD_DIR` | ❌ | `/tmp/ytdlp_bot_downloads` | 临时下载目录 |
 | `MAX_FILE_SIZE` | ❌ | `2097152000` (2000MB) | Telegram 上传文件大小限制 (字节) |

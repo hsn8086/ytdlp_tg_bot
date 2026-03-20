@@ -60,7 +60,7 @@ ytdlp_bot/
 
 ### 配置管理
 - 使用 pydantic-settings 的 `BaseSettings` 从 `.env` 读取配置
-- 必填项：`TELEGRAM_BOT_TOKEN`
+- 必填项：`TELEGRAM_BOT_TOKEN`, `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` (后两者用于 docker-compose 启动 API Server)
 - 可选项：`TELEGRAM_API_URL`, `PROXY_URL`, `DOWNLOAD_DIR`, `MAX_FILE_SIZE`
 
 ## Development Commands
