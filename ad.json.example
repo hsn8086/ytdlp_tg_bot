@@ -1,0 +1,15 @@
+{
+  "max_ads_per_message": 2,
+  "ads": [
+    {
+      "title": "🔥 高速云服务器推荐",
+      "url": "https://example.com/server",
+      "probability": 0.5
+    },
+    {
+      "title": "🎮 游戏充值特惠",
+      "url": "https://example.com/games",
+      "probability": 0.3
+    }
+  ]
+}

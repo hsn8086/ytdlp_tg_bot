@@ -52,6 +52,7 @@ class FakeBot:
         caption: str,
         reply_to_message_id: int,
         supports_streaming: bool,
+        **kwargs: Any,
     ) -> None:
         self.sent_videos.append(
             {
@@ -60,6 +61,7 @@ class FakeBot:
                 "reply_to_message_id": reply_to_message_id,
                 "supports_streaming": supports_streaming,
                 "name": getattr(video, "name", ""),
+                **kwargs,
             }
         )
 
@@ -115,7 +117,10 @@ def test_process_video_sends_downloaded_file_and_cleans_up(tmp_path: Path) -> No
 
     bot._process_video(message, "https://youtu.be/dQw4w9WgXcQ", "youtube")
 
-    assert fake_bot.sent_videos[0]["caption"] == "Demo title"
+    assert (
+        fake_bot.sent_videos[0]["caption"]
+        == "Demo title\n\n<a href='https://youtu.be/dQw4w9WgXcQ'>原视频</a> | @hsn_viddl_bot"
+    )
     assert fake_bot.deleted_messages == [(100, 999)]
     assert not video_file.exists()
 

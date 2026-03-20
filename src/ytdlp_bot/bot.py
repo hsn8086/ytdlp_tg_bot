@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from pathlib import Path
 from typing import Any, cast
 
 import requests
 import telebot
 from telebot import apihelper
+from telebot.apihelper import ApiTelegramException
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from ytdlp_bot.config import Settings
 from ytdlp_bot.downloader import DownloadError, DownloadResult, Downloader
 from ytdlp_bot.patterns import extract_urls
+from ytdlp_bot.db import Database
+from ytdlp_bot.ads import AdManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +29,17 @@ class VideoBot:
         settings: Settings,
         bot: Any | None = None,
         downloader: Any | None = None,
+        db: Database | None = None,
+        ad_manager: AdManager | None = None,
     ) -> None:
         self.settings = settings
         self._configure_proxy()
         self._configure_api_url()
         self.bot = bot or telebot.TeleBot(self.settings.telegram_bot_token)
         self.downloader = downloader or Downloader(settings)
+        self.db = db or Database(self.settings.data_dir)
+        self.ad_manager = ad_manager or AdManager(self.settings.data_dir)
+        self.semaphore = threading.Semaphore(self.settings.max_concurrent_downloads)
         self._setup_handlers()
 
     def _configure_proxy(self) -> None:
@@ -83,8 +94,19 @@ class VideoBot:
         return "http://" in text or "https://" in text
 
     def _process_video(self, message: MessageLike, url: str, platform: str) -> None:
+        chat_id = message.chat.id
+
+        # Check daily quota
+        used_bytes = self.db.get_today_usage(chat_id)
+        if used_bytes >= self.settings.daily_quota_mb * 1024 * 1024:
+            self.bot.send_message(chat_id, "❌ 今日下载额度已耗尽")
+            return
+
+        status_message = self.bot.reply_to(message, "⏳ 排队中...")
+        self.semaphore.acquire()
+        self._update_status(status_message, "📥 正在下载...")
+
         logger.info("Processing %s url: %s", platform, url)
-        status_message = self.bot.reply_to(message, "⏳ 正在下载...")
         temporary_files: set[Path] = set()
         try:
             result = self.downloader.download(url)
@@ -93,38 +115,92 @@ class VideoBot:
 
             if result.file_size > self.settings.max_file_size:
                 max_mb = self.settings.max_file_size / (1024 * 1024)
-                self.bot.send_message(
-                    message.chat.id, f"❌ 视频过大（超过 {max_mb:.0f}MB），无法发送"
-                )
+                self.bot.send_message(chat_id, f"❌ 视频过大（超过 {max_mb:.0f}MB），无法发送")
                 return
 
             self._update_status(status_message, "📤 正在上传...")
-            self._send_video(message, result, send_path)
+            self._send_video(message, result, send_path, url, used_bytes)
+            self.db.add_usage(chat_id, result.file_size)
+
         except DownloadError as exc:
-            self.bot.send_message(message.chat.id, f"❌ 下载失败：{exc}")
+            self.bot.send_message(chat_id, f"❌ 下载失败：{exc}")
         except requests.RequestException:
             logger.exception("Network error while processing %s", url)
-            self.bot.send_message(message.chat.id, "❌ 网络错误，请稍后重试")
+            self.bot.send_message(chat_id, "❌ 网络错误，请稍后重试")
         except Exception:
             logger.exception("Unexpected error while processing %s", url)
-            self.bot.send_message(message.chat.id, "❌ 下载失败：服务暂时不可用")
+            self.bot.send_message(chat_id, "❌ 下载失败：服务暂时不可用")
         finally:
             self._cleanup_files(temporary_files)
             self._delete_status(status_message)
+            self.semaphore.release()
 
     def _update_status(self, status_message: Any, text: str) -> None:
-        self.bot.edit_message_text(text, status_message.chat.id, status_message.message_id)
+        try:
+            self.bot.edit_message_text(text, status_message.chat.id, status_message.message_id)
+        except ApiTelegramException as e:
+            if e.error_code == 429:
+                retry_after = e.result_json.get("parameters", {}).get("retry_after", 3)
+                logger.warning(
+                    "Rate limited by Telegram. Retrying after %d seconds...", retry_after
+                )
+                time.sleep(retry_after)
+                try:
+                    self.bot.edit_message_text(
+                        text, status_message.chat.id, status_message.message_id
+                    )
+                except Exception as ex:
+                    logger.debug("Failed to edit message after retry: %s", ex)
+            else:
+                logger.debug("Failed to edit status message", exc_info=True)
+        except Exception as e:
+            logger.debug("Failed to edit status message: %s", e)
 
-    def _send_video(self, message: Any, result: DownloadResult, path: Path) -> None:
-        caption = result.title[:1024]
-        with path.open("rb") as video_file:
-            self.bot.send_video(
-                message.chat.id,
-                video_file,
-                caption=caption,
-                reply_to_message_id=message.message_id,
-                supports_streaming=True,
+    def _send_video(
+        self, message: Any, result: DownloadResult, path: Path, url: str, used_bytes: int
+    ) -> None:
+        safe_title = result.title.replace("<", "&lt;").replace(">", "&gt;")
+        caption = f"{safe_title}\n\n<a href='{url}'>原视频</a> | {self.settings.bot_username}"
+        if len(caption) > 1024:
+            # If too long, truncate title
+            allowed_title_len = (
+                1024 - len(f"\n\n<a href='{url}'>原视频</a> | {self.settings.bot_username}") - 3
             )
+            caption = f"{safe_title[:allowed_title_len]}...\n\n<a href='{url}'>原视频</a> | {self.settings.bot_username}"
+
+        reply_markup = None
+        if used_bytes >= self.settings.ad_threshold_mb * 1024 * 1024:
+            ads = self.ad_manager.get_ads()
+            if ads:
+                reply_markup = InlineKeyboardMarkup()
+                for ad in ads:
+                    reply_markup.add(InlineKeyboardButton(text=ad["title"], url=ad["url"]))
+
+        with path.open("rb") as video_file:
+            retry_count = 3
+            while retry_count > 0:
+                try:
+                    self.bot.send_video(
+                        message.chat.id,
+                        video_file,
+                        caption=caption,
+                        parse_mode="HTML",
+                        reply_markup=reply_markup,
+                        reply_to_message_id=message.message_id,
+                        supports_streaming=True,
+                    )
+                    break
+                except ApiTelegramException as e:
+                    if e.error_code == 429:
+                        retry_after = e.result_json.get("parameters", {}).get("retry_after", 5)
+                        logger.warning(
+                            "Rate limited when sending video. Retrying after %d seconds...",
+                            retry_after,
+                        )
+                        time.sleep(retry_after)
+                        retry_count -= 1
+                    else:
+                        raise e
 
     def _cleanup_files(self, paths: set[Path]) -> None:
         for path in paths:

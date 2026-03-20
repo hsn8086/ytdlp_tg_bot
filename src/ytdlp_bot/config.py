@@ -20,7 +20,15 @@ class Settings(BaseSettings):
     telegram_api_url: str | None = Field(default=None, alias="TELEGRAM_API_URL")
     proxy_url: str | None = Field(default=None, alias="PROXY_URL")
     download_dir: Path = Field(default=Path("/tmp/ytdlp_bot_downloads"), alias="DOWNLOAD_DIR")
+    data_dir: Path = Field(default=Path("./data"), alias="DATA_DIR")
     max_file_size: int = Field(default=2000 * 1024 * 1024, alias="MAX_FILE_SIZE")
+
+    # New features
+    bot_username: str = Field(default="@hsn_viddl_bot", alias="BOT_USERNAME")
+    daily_quota_mb: int = Field(default=5000, alias="DAILY_QUOTA_MB")
+    ad_threshold_mb: int = Field(default=1000, alias="AD_THRESHOLD_MB")
+    max_concurrent_downloads: int = Field(default=3, alias="MAX_CONCURRENT_DOWNLOADS")
+
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     @field_validator("proxy_url", mode="before")
@@ -41,12 +49,12 @@ class Settings(BaseSettings):
             raise ValueError("PROXY_URL must include host and port")
         return normalized
 
-    @field_validator("download_dir", mode="before")
+    @field_validator("download_dir", "data_dir", mode="before")
     @classmethod
-    def validate_download_dir(cls, value: str | Path) -> Path:
+    def validate_dir(cls, value: str | Path) -> Path:
         return Path(value).expanduser()
 
-    @field_validator("max_file_size")
+    @field_validator("max_file_size", "daily_quota_mb", "max_concurrent_downloads")
     @classmethod
     def validate_positive_int(cls, value: int) -> int:
         if value <= 0:

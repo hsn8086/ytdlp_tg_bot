@@ -20,6 +20,7 @@ services:
       - telegram-bot-api
     volumes:
       - downloads:/tmp/ytdlp_bot_downloads
+      - ./data:/app/data
 
 volumes:
   downloads:
