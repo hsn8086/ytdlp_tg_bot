@@ -80,14 +80,6 @@ class StubDownloader:
         return self.result
 
 
-class StubCompressor:
-    def __init__(self, result: str | None) -> None:
-        self.result = result
-
-    def compress(self, input_path: str) -> str | None:
-        return self.result
-
-
 def test_start_and_help_handlers_reply_with_help_text() -> None:
     fake_bot = FakeBot()
     bot = VideoBot(Settings(TELEGRAM_BOT_TOKEN="token"), bot=fake_bot)
@@ -116,7 +108,6 @@ def test_process_video_sends_downloaded_file_and_cleans_up(tmp_path: Path) -> No
         Settings(TELEGRAM_BOT_TOKEN="token", max_file_size=10),
         bot=fake_bot,
         downloader=downloader,
-        compressor=StubCompressor(None),
     )
     message = FakeMessage(
         chat=SimpleNamespace(id=100), message_id=42, text="https://youtu.be/dQw4w9WgXcQ"
@@ -129,26 +120,23 @@ def test_process_video_sends_downloaded_file_and_cleans_up(tmp_path: Path) -> No
     assert not video_file.exists()
 
 
-def test_process_video_compresses_large_file_before_sending(tmp_path: Path) -> None:
+def test_process_video_rejects_large_file(tmp_path: Path) -> None:
     source_file = tmp_path / "demo.mp4"
     source_file.write_bytes(b"x" * 20)
-    compressed_file = tmp_path / "demo.compressed.mp4"
-    compressed_file.write_bytes(b"y" * 5)
     fake_bot = FakeBot()
     downloader = StubDownloader(
         DownloadResult(
             file_path=str(source_file),
-            title="Compressed demo",
+            title="Large demo",
             duration=20,
             file_size=source_file.stat().st_size,
         )
     )
-    compressor = StubCompressor(str(compressed_file))
+    # limit size to 10 bytes, file is 20 bytes
     bot = VideoBot(
         Settings(TELEGRAM_BOT_TOKEN="token", max_file_size=10),
         bot=fake_bot,
         downloader=downloader,
-        compressor=compressor,
     )
     message = FakeMessage(
         chat=SimpleNamespace(id=100), message_id=42, text="https://youtu.be/dQw4w9WgXcQ"
@@ -156,10 +144,9 @@ def test_process_video_compresses_large_file_before_sending(tmp_path: Path) -> N
 
     bot._process_video(message, "https://youtu.be/dQw4w9WgXcQ", "youtube")
 
-    assert fake_bot.edits == ["📦 正在处理..."]
-    assert fake_bot.sent_videos[0]["name"].endswith("demo.compressed.mp4")
+    assert len(fake_bot.sent_videos) == 0
+    assert any("视频过大" in msg for msg in fake_bot.sent_messages)
     assert not source_file.exists()
-    assert not compressed_file.exists()
 
 
 def test_process_video_reports_download_error() -> None:
@@ -169,7 +156,6 @@ def test_process_video_reports_download_error() -> None:
         Settings(TELEGRAM_BOT_TOKEN="token"),
         bot=fake_bot,
         downloader=downloader,
-        compressor=StubCompressor(None),
     )
     message = FakeMessage(
         chat=SimpleNamespace(id=100), message_id=42, text="https://youtu.be/dQw4w9WgXcQ"

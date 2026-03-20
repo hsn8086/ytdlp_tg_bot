@@ -17,11 +17,10 @@ class Settings(BaseSettings):
     )
 
     telegram_bot_token: str = Field(alias="TELEGRAM_BOT_TOKEN")
+    telegram_api_url: str | None = Field(default=None, alias="TELEGRAM_API_URL")
     proxy_url: str | None = Field(default=None, alias="PROXY_URL")
     download_dir: Path = Field(default=Path("/tmp/ytdlp_bot_downloads"), alias="DOWNLOAD_DIR")
-    max_file_size: int = Field(default=50 * 1024 * 1024, alias="MAX_FILE_SIZE")
-    target_file_size: int = Field(default=48 * 1024 * 1024, alias="TARGET_FILE_SIZE")
-    compress_timeout: int = Field(default=300, alias="COMPRESS_TIMEOUT")
+    max_file_size: int = Field(default=2000 * 1024 * 1024, alias="MAX_FILE_SIZE")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     @field_validator("proxy_url", mode="before")
@@ -47,7 +46,7 @@ class Settings(BaseSettings):
     def validate_download_dir(cls, value: str | Path) -> Path:
         return Path(value).expanduser()
 
-    @field_validator("max_file_size", "target_file_size", "compress_timeout")
+    @field_validator("max_file_size")
     @classmethod
     def validate_positive_int(cls, value: int) -> int:
         if value <= 0:

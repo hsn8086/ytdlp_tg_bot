@@ -55,7 +55,7 @@ class Downloader:
     def _build_options(self) -> dict[str, Any]:
         output_template = self.settings.download_dir / "%(title).200B-%(id)s.%(ext)s"
         options: dict[str, Any] = {
-            "format": "(bv*+ba/b)[filesize<50M]/(bv*+ba/b)",
+            "format": f"(bv*+ba/b)[filesize<{self.settings.max_file_size}]/(bv*+ba/b)",
             "merge_output_format": "mp4",
             "format_sort": ["ext:mp4:m4a", "res", "fps", "br"],
             "outtmpl": str(output_template),

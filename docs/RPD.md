@@ -47,39 +47,22 @@
 
 ### 2.3 文件大小管控
 
-Telegram Bot API 普通上传限制为 **50MB**，处理流程：
+由于官方 Telegram Bot API 限制 50MB 上传，本项目已支持 **Local Bot API Server** 来突破限制，处理流程：
 
 ```
 下载完成
   │
-  ├─ ≤ 50MB → 直接发送
+  ├─ ≤ MAX_FILE_SIZE (默认2GB) → 直接发送
   │
-  └─ > 50MB → ffmpeg 压缩
-                │
-                ├─ 压缩后 ≤ 50MB → 发送
-                │
-                └─ 压缩后 > 50MB → 通知用户"视频过大，无法发送"
+  └─ > MAX_FILE_SIZE → 通知用户"视频过大，无法发送"
 ```
 
-### 2.4 ffmpeg 压缩策略
-
-当视频文件超过 50MB 时，使用 ffmpeg 进行压缩：
-
-- **目标大小**：48MB（留 2MB 余量）
-- **方法**：基于目标大小计算 bitrate，执行 two-pass 或 CRF 模式压缩
-- **命令模板**：
-  ```
-  目标比特率 = (48 * 8 * 1024) / 视频时长(秒) kbps
-  ffmpeg -i input -c:v libx264 -b:v {bitrate}k -c:a aac -b:a 128k output.mp4
-  ```
-- **超时**：压缩过程设置合理超时（如 5 分钟），超时则放弃并通知用户
-
-### 2.5 用户交互
+### 2.4 用户交互
 
 #### 发送视频时
 1. 用户发送包含链接的消息
 2. 机器人回复「⏳ 正在下载...」状态消息
-3. 下载完成后更新为「📦 正在处理...」（如需压缩）
+3. 下载完成后更新为「📤 正在上传...」
 4. 发送视频文件，删除状态消息
 5. 清理本地临时文件
 
@@ -92,7 +75,7 @@ Telegram Bot API 普通上传限制为 **50MB**，处理流程：
 #### 错误处理
 - 链接无法解析 → 「❌ 无法识别该链接」
 - 下载失败 → 「❌ 下载失败：{原因}」
-- 文件过大 → 「❌ 视频过大（压缩后仍超过 50MB），无法发送」
+- 文件过大 → 「❌ 视频过大（超过 {N}MB），无法发送」
 - 网络错误 → 「❌ 网络错误，请稍后重试」
 
 ---
@@ -122,7 +105,6 @@ ytdlp_bot/
 │       ├── config.py         # Settings 类，pydantic-settings
 │       ├── bot.py            # Bot 实例化、消息 handler 注册
 │       ├── downloader.py     # yt-dlp 封装
-│       ├── compressor.py     # ffmpeg 压缩封装
 │       └── patterns.py       # 正则表达式定义与链接提取
 ├── .env.example
 ├── .gitignore
@@ -142,14 +124,13 @@ class Settings(BaseSettings):
     # 必填
     TELEGRAM_BOT_TOKEN: str
 
-    # 可选 - 代理
+    # 可选 - 代理与 API
+    TELEGRAM_API_URL: str | None = None
     PROXY_URL: str | None = None  # http://host:port 或 socks5://host:port
 
     # 可选 - 下载
     DOWNLOAD_DIR: str = "/tmp/ytdlp_bot_downloads"
-    MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
-    TARGET_FILE_SIZE: int = 48 * 1024 * 1024  # 48MB (压缩目标)
-    COMPRESS_TIMEOUT: int = 300  # 秒
+    MAX_FILE_SIZE: int = 2000 * 1024 * 1024  # 默认 2000MB
 
     # 可选 - 日志
     LOG_LEVEL: str = "INFO"
@@ -185,7 +166,7 @@ class Downloader:
         """
         下载视频，返回文件路径和元信息。
         yt-dlp 配置要点：
-        - format: 优先选不超过 50MB 的最佳画质
+        - format: 优先选不超过 MAX_FILE_SIZE 的最佳画质
         - proxy: 从 settings.PROXY_URL 读取
         - outtmpl: 输出到 DOWNLOAD_DIR
         - merge_output_format: mp4
@@ -201,20 +182,6 @@ class DownloadResult:
     title: str
     duration: int | None  # 秒
     file_size: int  # 字节
-```
-
-#### `compressor.py` - 压缩逻辑
-
-```python
-class Compressor:
-    def __init__(self, settings: Settings): ...
-
-    def compress(self, input_path: str) -> str | None:
-        """
-        压缩视频到目标大小以下。
-        返回压缩后文件路径，失败返回 None。
-        """
-        ...
 ```
 
 #### `bot.py` - Bot 主逻辑
@@ -235,7 +202,7 @@ class VideoBot:
         完整处理流程：
         1. 发送"下载中"状态
         2. 调用 downloader.download()
-        3. 检查文件大小，必要时压缩
+        3. 检查文件大小是否超过限制
         4. 发送视频到 Telegram
         5. 清理临时文件
         6. 错误处理
@@ -314,11 +281,10 @@ volumes:
 | 变量名 | 必填 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `TELEGRAM_BOT_TOKEN` | ✅ | - | Telegram Bot Token (从 @BotFather 获取) |
+| `TELEGRAM_API_URL` | ❌ | `None` | 自定义 Telegram Bot API Server 的基础 URL，如 `http://api-server:8081` |
 | `PROXY_URL` | ❌ | `None` | 代理地址，如 `http://host:port` 或 `socks5://host:port` |
 | `DOWNLOAD_DIR` | ❌ | `/tmp/ytdlp_bot_downloads` | 临时下载目录 |
-| `MAX_FILE_SIZE` | ❌ | `52428800` (50MB) | Telegram 上传文件大小限制 (字节) |
-| `TARGET_FILE_SIZE` | ❌ | `50331648` (48MB) | 压缩目标大小 (字节) |
-| `COMPRESS_TIMEOUT` | ❌ | `300` | ffmpeg 压缩超时 (秒) |
+| `MAX_FILE_SIZE` | ❌ | `2097152000` (2000MB) | Telegram 上传文件大小限制 (字节) |
 | `LOG_LEVEL` | ❌ | `INFO` | 日志级别 |
 
 ---
@@ -328,31 +294,28 @@ volumes:
 ### 5.1 主流程时序
 
 ```
-User                Bot                 Downloader          Compressor
- │                   │                      │                    │
- │  发送含链接消息    │                      │                    │
- │ ─────────────────>│                      │                    │
- │                   │  正则提取 URL         │                    │
- │                   │──┐                   │                    │
- │                   │<─┘                   │                    │
- │  「⏳ 正在下载」   │                      │                    │
- │ <─────────────────│                      │                    │
- │                   │  download(url)       │                    │
- │                   │ ────────────────────>│                    │
- │                   │  DownloadResult      │                    │
- │                   │ <────────────────────│                    │
- │                   │                      │                    │
- │                   │  if > 50MB:          │                    │
- │  「📦 正在压缩」   │  compress(path)      │                    │
- │ <─────────────────│ ─────────────────────────────────────────>│
- │                   │  compressed_path     │                    │
- │                   │ <─────────────────────────────────────────│
- │                   │                      │                    │
- │  发送视频文件      │                      │                    │
- │ <─────────────────│                      │                    │
- │                   │  清理临时文件         │                    │
- │                   │──┐                   │                    │
- │                   │<─┘                   │                    │
+User                Bot                 Downloader
+ │                   │                      │
+ │  发送含链接消息    │                      │
+ │ ─────────────────>│                      │
+ │                   │  正则提取 URL         │
+ │                   │──┐                   │
+ │                   │<─┘                   │
+ │  「⏳ 正在下载」   │                      │
+ │ <─────────────────│                      │
+ │                   │  download(url)       │
+ │                   │ ────────────────────>│
+ │                   │  DownloadResult      │
+ │                   │ <────────────────────│
+ │                   │                      │
+ │  「📤 正在上传」   │  if <= MAX_FILE_SIZE:│
+ │ <─────────────────│                      │
+ │                   │                      │
+ │  发送视频文件      │                      │
+ │ <─────────────────│                      │
+ │                   │  清理临时文件         │
+ │                   │──┐                   │
+ │                   │<─┘                   │
 ```
 
 ### 5.2 错误处理流程

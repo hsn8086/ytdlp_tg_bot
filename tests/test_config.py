@@ -11,11 +11,10 @@ def test_settings_load_defaults() -> None:
     settings = Settings(TELEGRAM_BOT_TOKEN="token", _env_file=None)
 
     assert settings.telegram_bot_token == "token"
+    assert settings.telegram_api_url is None
     assert settings.proxy_url is None
     assert settings.download_dir == Path("/tmp/ytdlp_bot_downloads")
-    assert settings.max_file_size == 50 * 1024 * 1024
-    assert settings.target_file_size == 48 * 1024 * 1024
-    assert settings.compress_timeout == 300
+    assert settings.max_file_size == 2000 * 1024 * 1024
 
 
 def test_settings_normalize_proxy_url() -> None:

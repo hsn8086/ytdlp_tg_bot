@@ -10,10 +10,11 @@
 - **Package Manager**: uv
 - **Telegram Bot Framework**: pyTelegramBotAPI (telebot)
 - **Video Downloader**: yt-dlp
-- **Video Processing**: ffmpeg (用于压缩超大视频)
+- **Video Processing**: ffmpeg (仅用于 yt-dlp 合并音视频流)
 - **Configuration**: pydantic-settings + `.env` 文件
 - **Deployment**: Docker + Docker Compose
 - **Proxy**: 支持 HTTP / SOCKS5 代理（可选），同时作用于 Telegram Bot API 和 yt-dlp
+- **Local Bot API**: 支持配置自定义 Telegram Bot API Server 以突破 50MB 上传限制
 
 ## Project Structure
 
@@ -29,7 +30,6 @@ ytdlp_bot/
 │       ├── config.py         # pydantic-settings 配置管理
 │       ├── bot.py            # Telegram bot 初始化与消息处理
 │       ├── downloader.py     # yt-dlp 下载逻辑
-│       ├── compressor.py     # ffmpeg 压缩逻辑
 │       └── patterns.py       # 正则匹配各平台链接
 ├── .env.example              # 环境变量示例
 ├── .env                      # 实际环境变量（不提交）
@@ -47,10 +47,10 @@ ytdlp_bot/
 - 每条消息可能包含多个链接，需全部识别处理
 
 ### 文件大小策略
-- yt-dlp 下载时通过 `format` 选项优先选择不超过 50MB 的格式
-- 如果下载后仍超过 50MB，使用 ffmpeg 压缩
-- 压缩后仍超过 50MB，向用户返回错误提示
-- Telegram Bot API 文件上传限制为 50MB
+- 由于官方 Telegram Bot API 限制 50MB 上传，本项目已重构为支持**自建 Local Bot API Server**。
+- 默认 `MAX_FILE_SIZE` 为 2000MB (2GB)。
+- 如果下载视频超过该限制，直接向用户返回错误提示。
+- 取消了原先由于 50MB 限制而引入的视频二次压缩（ffmpeg 压缩）逻辑，以提高服务器处理效率和视频画质。
 
 ### 代理配置
 - 代理是**可选**配置项，不设置则直连
@@ -61,7 +61,7 @@ ytdlp_bot/
 ### 配置管理
 - 使用 pydantic-settings 的 `BaseSettings` 从 `.env` 读取配置
 - 必填项：`TELEGRAM_BOT_TOKEN`
-- 可选项：`PROXY_URL`, `DOWNLOAD_DIR`, `MAX_FILE_SIZE`
+- 可选项：`TELEGRAM_API_URL`, `PROXY_URL`, `DOWNLOAD_DIR`, `MAX_FILE_SIZE`
 
 ## Development Commands
 

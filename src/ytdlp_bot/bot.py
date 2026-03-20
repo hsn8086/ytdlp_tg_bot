@@ -8,7 +8,6 @@ import requests
 import telebot
 from telebot import apihelper
 
-from ytdlp_bot.compressor import Compressor
 from ytdlp_bot.config import Settings
 from ytdlp_bot.downloader import DownloadError, DownloadResult, Downloader
 from ytdlp_bot.patterns import extract_urls
@@ -18,23 +17,18 @@ logger = logging.getLogger(__name__)
 MessageLike = Any
 
 
-class VideoTooLargeError(RuntimeError):
-    """Raised when a video still exceeds the upload limit after compression."""
-
-
 class VideoBot:
     def __init__(
         self,
         settings: Settings,
         bot: Any | None = None,
         downloader: Any | None = None,
-        compressor: Any | None = None,
     ) -> None:
         self.settings = settings
         self._configure_proxy()
+        self._configure_api_url()
         self.bot = bot or telebot.TeleBot(self.settings.telegram_bot_token)
         self.downloader = downloader or Downloader(settings)
-        self.compressor = compressor or Compressor(settings)
         self._setup_handlers()
 
     def _configure_proxy(self) -> None:
@@ -43,6 +37,11 @@ class VideoBot:
                 "http": self.settings.proxy_url,
                 "https": self.settings.proxy_url,
             }
+
+    def _configure_api_url(self) -> None:
+        if self.settings.telegram_api_url:
+            base_url = self.settings.telegram_api_url.rstrip("/")
+            cast(Any, apihelper).API_URL = f"{base_url}/bot{{0}}/{{1}}"
 
     def _setup_handlers(self) -> None:
         @self.bot.message_handler(commands=["start", "help"])
@@ -93,21 +92,16 @@ class VideoBot:
             temporary_files.add(send_path)
 
             if result.file_size > self.settings.max_file_size:
-                self._update_status(status_message, "📦 正在处理...")
-                compressed_path = self.compressor.compress(result.file_path)
-                if compressed_path is None:
-                    raise VideoTooLargeError
+                max_mb = self.settings.max_file_size / (1024 * 1024)
+                self.bot.send_message(
+                    message.chat.id, f"❌ 视频过大（超过 {max_mb:.0f}MB），无法发送"
+                )
+                return
 
-                send_path = Path(compressed_path)
-                temporary_files.add(send_path)
-                if send_path.stat().st_size > self.settings.max_file_size:
-                    raise VideoTooLargeError
-
+            self._update_status(status_message, "📤 正在上传...")
             self._send_video(message, result, send_path)
         except DownloadError as exc:
             self.bot.send_message(message.chat.id, f"❌ 下载失败：{exc}")
-        except VideoTooLargeError:
-            self.bot.send_message(message.chat.id, "❌ 视频过大（压缩后仍超过 50MB），无法发送")
         except requests.RequestException:
             logger.exception("Network error while processing %s", url)
             self.bot.send_message(message.chat.id, "❌ 网络错误，请稍后重试")
