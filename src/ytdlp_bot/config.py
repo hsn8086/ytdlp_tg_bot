@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     daily_quota_mb: int = Field(default=5000, alias="DAILY_QUOTA_MB")
     ad_threshold_mb: int = Field(default=1000, alias="AD_THRESHOLD_MB")
     max_concurrent_downloads: int = Field(default=3, alias="MAX_CONCURRENT_DOWNLOADS")
+    admin_chat_id: int | None = Field(default=None, alias="ADMIN_CHAT_ID")
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 

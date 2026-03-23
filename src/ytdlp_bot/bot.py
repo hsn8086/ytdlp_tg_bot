@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -107,6 +108,7 @@ class VideoBot:
         self._update_status(status_message, "📥 正在下载...")
 
         logger.info("Processing %s url: %s", platform, url)
+        self.db.increment_call_count()
         temporary_files: set[Path] = set()
         try:
             result = self.downloader.download(url)
@@ -175,6 +177,7 @@ class VideoBot:
                 reply_markup = InlineKeyboardMarkup()
                 for ad in ads:
                     reply_markup.add(InlineKeyboardButton(text=ad["title"], url=ad["url"]))
+                    self.db.increment_ad_trigger(ad["title"])
 
         with path.open("rb") as video_file:
             retry_count = 3
@@ -212,6 +215,57 @@ class VideoBot:
         except Exception:
             logger.debug("Failed to delete status message", exc_info=True)
 
+    def _send_daily_report(self) -> None:
+        admin_id = self.settings.admin_chat_id
+        if not admin_id:
+            return
+        try:
+            report = self.db.get_daily_report()
+            total_mb = report["total_bytes"] / (1024 * 1024)
+            lines = [
+                f"📊 日报 - {report['date']}",
+                f"",
+                f"调用次数: {report['call_count']}",
+                f"独立用户: {report['unique_users']}",
+                f"总流量: {total_mb:.1f} MB",
+            ]
+            if report["ad_stats"]:
+                lines.append("")
+                lines.append("广告触发统计:")
+                for ad_title, count in report["ad_stats"]:
+                    lines.append(f"  • {ad_title}: {count} 次")
+            else:
+                lines.append("")
+                lines.append("广告触发: 无")
+
+            self.bot.send_message(admin_id, "\n".join(lines))
+            logger.info("Daily report sent to %s", admin_id)
+        except Exception:
+            logger.exception("Failed to send daily report")
+
+    def _start_report_scheduler(self) -> None:
+        if not self.settings.admin_chat_id:
+            logger.info("ADMIN_CHAT_ID not set, daily report disabled")
+            return
+
+        def scheduler():
+            while True:
+                now = datetime.now()
+                tomorrow = (now + timedelta(days=1)).replace(
+                    hour=0, minute=0, second=5, microsecond=0
+                )
+                wait_seconds = (tomorrow - now).total_seconds()
+                logger.info(
+                    "Next daily report in %.0f seconds (at %s)", wait_seconds, tomorrow
+                )
+                time.sleep(wait_seconds)
+                self._send_daily_report()
+
+        thread = threading.Thread(target=scheduler, daemon=True)
+        thread.start()
+        logger.info("Daily report scheduler started")
+
     def run(self) -> None:
         logger.info("Bot polling started")
+        self._start_report_scheduler()
         self.bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
