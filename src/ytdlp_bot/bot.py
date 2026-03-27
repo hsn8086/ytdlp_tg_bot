@@ -11,13 +11,13 @@ import requests
 import telebot
 from telebot import apihelper
 from telebot.apihelper import ApiTelegramException
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from ytdlp_bot.config import Settings
-from ytdlp_bot.downloader import DownloadError, DownloadResult, Downloader
-from ytdlp_bot.patterns import extract_urls
-from ytdlp_bot.db import Database
 from ytdlp_bot.ads import AdManager
+from ytdlp_bot.config import Settings
+from ytdlp_bot.db import Database
+from ytdlp_bot.downloader import Downloader, DownloadError, DownloadResult
+from ytdlp_bot.patterns import extract_urls
 
 logger = logging.getLogger(__name__)
 
@@ -215,12 +215,12 @@ class VideoBot:
         except Exception:
             logger.debug("Failed to delete status message", exc_info=True)
 
-    def _send_daily_report(self) -> None:
+    def _send_daily_report(self, report_date: str | None = None) -> None:
         admin_id = self.settings.admin_chat_id
         if not admin_id:
             return
         try:
-            report = self.db.get_daily_report()
+            report = self.db.get_daily_report(report_date)
             total_mb = report["total_bytes"] / (1024 * 1024)
             lines = [
                 f"📊 日报 - {report['date']}",
@@ -255,11 +255,10 @@ class VideoBot:
                     hour=0, minute=0, second=5, microsecond=0
                 )
                 wait_seconds = (tomorrow - now).total_seconds()
-                logger.info(
-                    "Next daily report in %.0f seconds (at %s)", wait_seconds, tomorrow
-                )
+                logger.info("Next daily report in %.0f seconds (at %s)", wait_seconds, tomorrow)
                 time.sleep(wait_seconds)
-                self._send_daily_report()
+                report_date = (tomorrow - timedelta(days=1)).date().isoformat()
+                self._send_daily_report(report_date)
 
         thread = threading.Thread(target=scheduler, daemon=True)
         thread.start()

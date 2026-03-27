@@ -9,6 +9,7 @@ import pytest
 
 from ytdlp_bot.bot import VideoBot
 from ytdlp_bot.config import Settings
+from ytdlp_bot.db import Database
 from ytdlp_bot.downloader import DownloadError, DownloadResult
 
 
@@ -180,3 +181,23 @@ def test_unknown_link_handler_reports_unrecognized_url() -> None:
     unknown_handler(message)
 
     assert fake_bot.replies[-1] == "❌ 无法识别该链接"
+
+
+def test_send_daily_report_uses_explicit_report_date(tmp_path: Path) -> None:
+    fake_bot = FakeBot()
+    db = Database(tmp_path)
+    db.add_usage(chat_id=100, size_bytes=3 * 1024 * 1024)
+    db.increment_call_count()
+    bot = VideoBot(
+        Settings(TELEGRAM_BOT_TOKEN="token", ADMIN_CHAT_ID=999, DATA_DIR=tmp_path),
+        bot=fake_bot,
+        db=db,
+    )
+
+    bot._send_daily_report("2000-01-01")
+
+    assert fake_bot.sent_messages
+    assert "📊 日报 - 2000-01-01" in fake_bot.sent_messages[-1]
+    assert "调用次数: 0" in fake_bot.sent_messages[-1]
+    assert "独立用户: 0" in fake_bot.sent_messages[-1]
+    assert "总流量: 0.0 MB" in fake_bot.sent_messages[-1]
