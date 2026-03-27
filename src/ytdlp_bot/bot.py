@@ -93,7 +93,7 @@ class VideoBot:
         return (
             "欢迎使用 ytdlp_bot。\n"
             "直接发送视频链接即可开始下载。\n\n"
-            "当前支持：YouTube、Bilibili、X(Twitter)。\n"
+            "当前支持：YouTube、Bilibili、X(Twitter)、TikTok、Instagram、Vimeo、Reddit。\n"
             "命令：\n"
             "/start - 查看欢迎信息\n"
             "/help - 查看帮助说明\n"

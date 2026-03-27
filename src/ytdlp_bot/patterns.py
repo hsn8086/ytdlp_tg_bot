@@ -19,6 +19,22 @@ PATTERNS: dict[str, re.Pattern[str]] = {
         rf"https?://(?:www\.)?(?:twitter|x)\.com/[A-Za-z0-9_]+/status/\d+{_URL_SUFFIX}",
         re.IGNORECASE,
     ),
+    "tiktok": re.compile(
+        rf"https?://(?:www\.|vm\.|vt\.)?tiktok\.com/(?:@[A-Za-z0-9._-]+/video/\d+|t/[A-Za-z0-9]+|[A-Za-z0-9]+){_URL_SUFFIX}",
+        re.IGNORECASE,
+    ),
+    "instagram": re.compile(
+        rf"https?://(?:www\.)?instagram\.com/(?:reel|p|tv)/[A-Za-z0-9_-]+{_URL_SUFFIX}",
+        re.IGNORECASE,
+    ),
+    "vimeo": re.compile(
+        rf"https?://(?:www\.)?vimeo\.com/\d+{_URL_SUFFIX}",
+        re.IGNORECASE,
+    ),
+    "reddit": re.compile(
+        rf"https?://(?:(?:www|old)\.)?reddit\.com/r/[A-Za-z0-9_]+/comments/[A-Za-z0-9]+/[^\s/]+(?:/[A-Za-z0-9]+)?{_URL_SUFFIX}|https?://v\.redd\.it/[A-Za-z0-9]+{_URL_SUFFIX}",
+        re.IGNORECASE,
+    ),
 }
 
 _TRAILING_PUNCTUATION = ".,!?;:)]}"
