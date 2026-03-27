@@ -11,7 +11,7 @@ import requests
 import telebot
 from telebot import apihelper
 from telebot.apihelper import ApiTelegramException
-from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
+from telebot.types import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 
 from ytdlp_bot.ads import AdManager
 from ytdlp_bot.config import Settings
@@ -41,6 +41,7 @@ class VideoBot:
         self.db = db or Database(self.settings.data_dir)
         self.ad_manager = ad_manager or AdManager(self.settings.data_dir)
         self.semaphore = threading.Semaphore(self.settings.max_concurrent_downloads)
+        self._register_commands()
         self._setup_handlers()
 
     def _configure_proxy(self) -> None:
@@ -59,6 +60,18 @@ class VideoBot:
         @self.bot.message_handler(commands=["start", "help"])
         def handle_help(message: MessageLike) -> None:
             self.bot.reply_to(message, self._build_help_text())
+
+        @self.bot.message_handler(commands=["report"])
+        def handle_report(message: MessageLike) -> None:
+            if not self.settings.admin_chat_id:
+                self.bot.reply_to(message, "❌ 未配置日报接收管理员")
+                return
+            if message.chat.id != self.settings.admin_chat_id:
+                self.bot.reply_to(message, "❌ 无权限执行该命令")
+                return
+
+            report_date = (datetime.now().date() - timedelta(days=1)).isoformat()
+            self._send_daily_report(report_date, target_chat_id=message.chat.id)
 
         @self.bot.message_handler(
             func=lambda message: self._has_supported_urls(getattr(message, "text", None)),
@@ -83,8 +96,21 @@ class VideoBot:
             "当前支持：YouTube、Bilibili、X(Twitter)。\n"
             "命令：\n"
             "/start - 查看欢迎信息\n"
-            "/help - 查看帮助说明"
+            "/help - 查看帮助说明\n"
+            "/report - 手动发送昨日日报"
         )
+
+    def _register_commands(self) -> None:
+        try:
+            self.bot.set_my_commands(
+                [
+                    BotCommand("start", "查看欢迎信息"),
+                    BotCommand("help", "查看帮助说明"),
+                    BotCommand("report", "手动发送昨日日报"),
+                ]
+            )
+        except Exception:
+            logger.debug("Failed to register bot commands", exc_info=True)
 
     def _has_supported_urls(self, text: str | None) -> bool:
         return bool(text and extract_urls(text))
@@ -215,9 +241,11 @@ class VideoBot:
         except Exception:
             logger.debug("Failed to delete status message", exc_info=True)
 
-    def _send_daily_report(self, report_date: str | None = None) -> None:
-        admin_id = self.settings.admin_chat_id
-        if not admin_id:
+    def _send_daily_report(
+        self, report_date: str | None = None, target_chat_id: int | None = None
+    ) -> None:
+        chat_id = target_chat_id or self.settings.admin_chat_id
+        if not chat_id:
             return
         try:
             report = self.db.get_daily_report(report_date)
@@ -238,8 +266,8 @@ class VideoBot:
                 lines.append("")
                 lines.append("广告触发: 无")
 
-            self.bot.send_message(admin_id, "\n".join(lines))
-            logger.info("Daily report sent to %s", admin_id)
+            self.bot.send_message(chat_id, "\n".join(lines))
+            logger.info("Daily report sent to %s", chat_id)
         except Exception:
             logger.exception("Failed to send daily report")
 

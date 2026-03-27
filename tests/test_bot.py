@@ -28,6 +28,7 @@ class FakeBot:
         self.edits: list[str] = []
         self.sent_videos: list[dict[str, Any]] = []
         self.deleted_messages: list[tuple[int, int]] = []
+        self.commands: list[Any] = []
 
     def message_handler(self, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -69,6 +70,9 @@ class FakeBot:
     def delete_message(self, chat_id: int, message_id: int) -> None:
         self.deleted_messages.append((chat_id, message_id))
 
+    def set_my_commands(self, commands: list[Any]) -> None:
+        self.commands = commands
+
     def infinity_polling(self, **kwargs: Any) -> None:
         return None
 
@@ -92,7 +96,9 @@ def test_start_and_help_handlers_reply_with_help_text() -> None:
     help_handler(message)
 
     assert "直接发送视频链接即可开始下载" in fake_bot.replies[-1]
+    assert "/report - 手动发送昨日日报" in fake_bot.replies[-1]
     assert bot._has_supported_urls("https://youtu.be/dQw4w9WgXcQ") is True
+    assert [command.command for command in fake_bot.commands] == ["start", "help", "report"]
 
 
 def test_process_video_sends_downloaded_file_and_cleans_up(tmp_path: Path) -> None:
@@ -175,7 +181,7 @@ def test_process_video_reports_download_error() -> None:
 def test_unknown_link_handler_reports_unrecognized_url() -> None:
     fake_bot = FakeBot()
     VideoBot(Settings(TELEGRAM_BOT_TOKEN="token"), bot=fake_bot)
-    unknown_handler = fake_bot.handlers[2]["func"]
+    unknown_handler = fake_bot.handlers[3]["func"]
     message = FakeMessage(chat=SimpleNamespace(id=1), message_id=1, text="https://example.com")
 
     unknown_handler(message)
@@ -201,3 +207,31 @@ def test_send_daily_report_uses_explicit_report_date(tmp_path: Path) -> None:
     assert "调用次数: 0" in fake_bot.sent_messages[-1]
     assert "独立用户: 0" in fake_bot.sent_messages[-1]
     assert "总流量: 0.0 MB" in fake_bot.sent_messages[-1]
+
+
+def test_report_handler_rejects_non_admin_user() -> None:
+    fake_bot = FakeBot()
+    VideoBot(Settings(TELEGRAM_BOT_TOKEN="token", ADMIN_CHAT_ID=999), bot=fake_bot)
+    report_handler = fake_bot.handlers[1]["func"]
+    message = FakeMessage(chat=SimpleNamespace(id=100), message_id=1, text="/report")
+
+    report_handler(message)
+
+    assert fake_bot.replies[-1] == "❌ 无权限执行该命令"
+
+
+def test_report_handler_sends_report_to_admin_chat(tmp_path: Path) -> None:
+    fake_bot = FakeBot()
+    db = Database(tmp_path)
+    bot = VideoBot(
+        Settings(TELEGRAM_BOT_TOKEN="token", ADMIN_CHAT_ID=999, DATA_DIR=tmp_path),
+        bot=fake_bot,
+        db=db,
+    )
+    report_handler = fake_bot.handlers[1]["func"]
+    message = FakeMessage(chat=SimpleNamespace(id=999), message_id=1, text="/report")
+
+    report_handler(message)
+
+    assert fake_bot.sent_messages
+    assert fake_bot.sent_messages[-1].startswith("📊 日报 - ")
