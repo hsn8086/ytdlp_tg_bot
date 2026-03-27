@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -54,10 +54,16 @@ class Downloader:
 
     def _build_options(self) -> dict[str, Any]:
         output_template = self.settings.download_dir / "%(title).200B-%(id)s.%(ext)s"
+        preferred_format = (
+            "b[height<=720][vcodec!=none][acodec!=none][ext=mp4]/"
+            "b[height<=720][vcodec!=none][acodec!=none]/"
+            "best[height<=720][vcodec!=none][acodec!=none]/"
+            "(bv*[height<=720]+ba/b[height<=720]/bv*+ba/b)"
+        )
         options: dict[str, Any] = {
-            "format": f"(bv*+ba/b)[filesize<{self.settings.max_file_size}]/(bv*+ba/b)",
+            "format": preferred_format,
             "merge_output_format": "mp4",
-            "format_sort": ["ext:mp4:m4a", "res", "fps", "br"],
+            "format_sort": ["height:720", "ext:mp4:m4a", "res", "fps", "br"],
             "outtmpl": str(output_template),
             "restrictfilenames": True,
             "noplaylist": True,

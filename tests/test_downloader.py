@@ -7,7 +7,7 @@ import pytest
 from yt_dlp.utils import DownloadError as YtDlpDownloadError
 
 from ytdlp_bot.config import Settings
-from ytdlp_bot.downloader import DownloadError, Downloader
+from ytdlp_bot.downloader import Downloader, DownloadError
 
 
 class FakeYoutubeDL:
@@ -37,7 +37,6 @@ class FakeYoutubeDL:
 def test_downloader_returns_download_result(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    settings = Settings(TELEGRAM_BOT_TOKEN="token", download_dir=tmp_path)
     target_file = tmp_path / "demo-123.mp4"
     target_file.write_bytes(b"video-data")
     info = {
@@ -48,6 +47,9 @@ def test_downloader_returns_download_result(
 
     def fake_factory(options: dict[str, Any]) -> FakeYoutubeDL:
         assert options["proxy"] == "http://127.0.0.1:7890"
+        assert options["format"].startswith("b[height<=720][vcodec!=none][acodec!=none][ext=mp4]/")
+        assert "best[height<=720][vcodec!=none][acodec!=none]" in options["format"]
+        assert options["format_sort"][0] == "height:720"
         return FakeYoutubeDL(options, info, str(target_file.with_suffix(".mkv")))
 
     monkeypatch.setattr("ytdlp_bot.downloader.YoutubeDL", fake_factory)
