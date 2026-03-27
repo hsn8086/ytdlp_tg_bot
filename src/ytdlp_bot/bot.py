@@ -70,8 +70,7 @@ class VideoBot:
                 self.bot.reply_to(message, "❌ 无权限执行该命令")
                 return
 
-            report_date = (datetime.now().date() - timedelta(days=1)).isoformat()
-            self._send_daily_report(report_date, target_chat_id=message.chat.id)
+            self._send_daily_report(target_chat_id=message.chat.id)
 
         @self.bot.message_handler(
             func=lambda message: self._has_supported_urls(getattr(message, "text", None)),
@@ -97,7 +96,7 @@ class VideoBot:
             "命令：\n"
             "/start - 查看欢迎信息\n"
             "/help - 查看帮助说明\n"
-            "/report - 手动发送昨日日报"
+            "/report - 手动发送今日日报"
         )
 
     def _register_commands(self) -> None:
@@ -106,7 +105,7 @@ class VideoBot:
                 [
                     BotCommand("start", "查看欢迎信息"),
                     BotCommand("help", "查看帮助说明"),
-                    BotCommand("report", "手动发送昨日日报"),
+                    BotCommand("report", "手动发送今日日报"),
                 ]
             )
         except Exception:

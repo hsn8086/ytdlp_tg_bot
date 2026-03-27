@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -96,7 +97,7 @@ def test_start_and_help_handlers_reply_with_help_text() -> None:
     help_handler(message)
 
     assert "直接发送视频链接即可开始下载" in fake_bot.replies[-1]
-    assert "/report - 手动发送昨日日报" in fake_bot.replies[-1]
+    assert "/report - 手动发送今日日报" in fake_bot.replies[-1]
     assert bot._has_supported_urls("https://youtu.be/dQw4w9WgXcQ") is True
     assert [command.command for command in fake_bot.commands] == ["start", "help", "report"]
 
@@ -223,6 +224,8 @@ def test_report_handler_rejects_non_admin_user() -> None:
 def test_report_handler_sends_report_to_admin_chat(tmp_path: Path) -> None:
     fake_bot = FakeBot()
     db = Database(tmp_path)
+    db.add_usage(chat_id=999, size_bytes=2 * 1024 * 1024)
+    db.increment_call_count()
     bot = VideoBot(
         Settings(TELEGRAM_BOT_TOKEN="token", ADMIN_CHAT_ID=999, DATA_DIR=tmp_path),
         bot=fake_bot,
@@ -234,4 +237,6 @@ def test_report_handler_sends_report_to_admin_chat(tmp_path: Path) -> None:
     report_handler(message)
 
     assert fake_bot.sent_messages
-    assert fake_bot.sent_messages[-1].startswith("📊 日报 - ")
+    assert f"📊 日报 - {date.today().isoformat()}" in fake_bot.sent_messages[-1]
+    assert "调用次数: 1" in fake_bot.sent_messages[-1]
+    assert "独立用户: 1" in fake_bot.sent_messages[-1]
